@@ -90,8 +90,15 @@ public class TaintPassingMV extends TaintAdapter implements Opcodes {
 
     @Override
     public void visitCode() {
+        if(this.owner.startsWith("fwh/Main") && this.name.startsWith("main")){
+            super.visitMethodInsn(INVOKESTATIC, "edu/columbia/cs/psl/phosphor/instrumenter/TaintPassingMV", "printSome", "()V", false);
+        }
         super.visitCode();
         taintTagFactory.methodEntered(owner, name, descriptor, passThroughMV, lvs, this);
+    }
+
+    public static void printSome() {
+        System.out.println("TaintPassingMV printSome");
     }
 
     @Override
