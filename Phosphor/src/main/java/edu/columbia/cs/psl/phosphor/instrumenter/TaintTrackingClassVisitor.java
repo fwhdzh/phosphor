@@ -118,7 +118,8 @@ public class TaintTrackingClassVisitor extends ClassVisitor {
 
     @Override
     public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
-        addTaintField = true;
+        //addTaintField = true;
+        addTaintField = false;
         addTaintMethod = true;
         this.generateExtraLVDebug = name.equals("java/lang/invoke/MethodType");
         this.fixLdcClass = (version & 0xFFFF) < Opcodes.V1_5;
@@ -159,6 +160,7 @@ public class TaintTrackingClassVisitor extends ClassVisitor {
         if(addTaintField) {
             addTaintMethod = true;
         }
+        addTaintMethod = false;
         if((superName.equals("java/lang/Object") || Instrumenter.isIgnoredClass(superName)) && !isInterface && !isAnnotation) {
             generateEquals = true;
             generateHashCode = true;
@@ -274,6 +276,9 @@ public class TaintTrackingClassVisitor extends ClassVisitor {
 
     @Override
     public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
+        if (true) {
+            return super.visitMethod(access, name, desc, signature, exceptions);
+        }
         if (Configuration.taintTagFactory.isIgnoredMethod(className, name, desc)) {
             return super.visitMethod(access, name, desc, signature, exceptions);
         }
@@ -577,7 +582,10 @@ public class TaintTrackingClassVisitor extends ClassVisitor {
 
     @Override
     public FieldVisitor visitField(int access, String name, String desc, String signature, Object value) {
-        if(Instrumenter.isIgnoredClassWithStubsButNoTracking(className)){
+        //if(Instrumenter.isIgnoredClassWithStubsButNoTracking(className)){
+        //    return super.visitField(access, name, desc, signature, value);
+        //}
+        if (true) {
             return super.visitField(access, name, desc, signature, value);
         }
         if(shouldMakeFieldPublic(className, name)) {

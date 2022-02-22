@@ -71,7 +71,9 @@ public class TaintPassingMV extends TaintAdapter implements Opcodes {
                           ControlFlowPropagationPolicy controlFlowPolicy) {
         super(access, owner, name, descriptor, signature, exceptions, mv, analyzer);
         taintTagFactory.instrumentationStarting(access, name, descriptor);
-        this.isLambda = this.isIgnoreAllInstrumenting = owner.contains("$Lambda$");
+        //this.isLambda = this.isIgnoreAllInstrumenting = owner.contains("$Lambda$");
+        this.isLambda = owner.contains("$Lambda$");
+        this.isIgnoreAllInstrumenting = true;
         this.name = name;
         this.owner = owner;
         this.wrapperMethodsToAdd = wrapperMethodsToAdd;
@@ -1389,7 +1391,8 @@ public class TaintPassingMV extends TaintAdapter implements Opcodes {
         } else if(opcode == TaintUtils.RAW_INSN) {
             isRawInstruction = !isRawInstruction;
         } else if(opcode == TaintUtils.IGNORE_EVERYTHING) {
-            isIgnoreAllInstrumenting = !isIgnoreAllInstrumenting;
+            //isIgnoreAllInstrumenting = !isIgnoreAllInstrumenting;
+            isIgnoreAllInstrumenting = true;
             taintTagFactory.signalOp(opcode, null);
             super.visitInsn(opcode);
         } else if(opcode == TaintUtils.NO_TAINT_STORE_INSN) {
