@@ -9,20 +9,37 @@ import edu.columbia.cs.psl.phosphor.control.ControlStackInitializingMV;
 import edu.columbia.cs.psl.phosphor.control.ControlStackRestoringMV;
 import edu.columbia.cs.psl.phosphor.instrumenter.analyzer.NeverNullArgAnalyzerAdapter;
 import edu.columbia.cs.psl.phosphor.runtime.NativeHelper;
-import edu.columbia.cs.psl.phosphor.runtime.TaintInstrumented;
 import edu.columbia.cs.psl.phosphor.runtime.TaintSourceWrapper;
 import edu.columbia.cs.psl.phosphor.runtime.UninstrumentedTaintSentinel;
 import edu.columbia.cs.psl.phosphor.struct.LazyArrayObjTags;
 import edu.columbia.cs.psl.phosphor.struct.LazyReferenceArrayObjTags;
-import edu.columbia.cs.psl.phosphor.struct.TaintedObjectWithObjTag;
-import edu.columbia.cs.psl.phosphor.struct.TaintedWithObjTag;
+import edu.columbia.cs.psl.phosphor.struct.harmony.util.HashMap;
+import edu.columbia.cs.psl.phosphor.struct.harmony.util.HashSet;
+import edu.columbia.cs.psl.phosphor.struct.harmony.util.LinkedList;
+import edu.columbia.cs.psl.phosphor.struct.harmony.util.List;
+import edu.columbia.cs.psl.phosphor.struct.harmony.util.Map;
+import edu.columbia.cs.psl.phosphor.struct.harmony.util.Set;
 import edu.columbia.cs.psl.phosphor.struct.harmony.util.StringBuilder;
-import edu.columbia.cs.psl.phosphor.struct.harmony.util.*;
 import edu.columbia.cs.psl.phosphor.struct.multid.MultiDTaintedArray;
 import edu.columbia.cs.psl.phosphor.struct.multid.MultiDTaintedArrayWithObjTag;
-import org.objectweb.asm.*;
+import iscas.tcse.fwh.FWHMethodVisitor;
+import org.objectweb.asm.AnnotationVisitor;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.FieldVisitor;
+import org.objectweb.asm.Label;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.GeneratorAdapter;
-import org.objectweb.asm.tree.*;
+import org.objectweb.asm.tree.AnnotationNode;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.FrameNode;
+import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.LocalVariableNode;
+import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.ParameterNode;
+import org.objectweb.asm.tree.TypeAnnotationNode;
 import org.objectweb.asm.util.TraceClassVisitor;
 
 import java.io.FileNotFoundException;
@@ -34,8 +51,15 @@ import java.lang.reflect.Modifier;
 
 import static edu.columbia.cs.psl.phosphor.Configuration.TAINT_TAG_INTERNAL_NAME;
 import static edu.columbia.cs.psl.phosphor.Configuration.controlFlowManager;
-import static edu.columbia.cs.psl.phosphor.instrumenter.TaintMethodRecord.*;
+import static edu.columbia.cs.psl.phosphor.instrumenter.TaintMethodRecord.BOX_IF_NECESSARY;
+import static edu.columbia.cs.psl.phosphor.instrumenter.TaintMethodRecord.CONTROL_STACK_UNINSTRUMENTED_WRAPPER;
+import static edu.columbia.cs.psl.phosphor.instrumenter.TaintMethodRecord.ENSURE_UNBOXED;
+import static edu.columbia.cs.psl.phosphor.instrumenter.TaintMethodRecord.NEW_EMPTY_TAINT;
 import static org.objectweb.asm.Opcodes.ALOAD;
+
+//import edu.columbia.cs.psl.phosphor.runtime.TaintInstrumented;
+//import edu.columbia.cs.psl.phosphor.struct.TaintedObjectWithObjTag;
+//import edu.columbia.cs.psl.phosphor.struct.TaintedWithObjTag;
 
 /**
  * CV responsibilities: Add a field to classes to track each instance's taint
@@ -97,6 +121,9 @@ public class TaintTrackingClassVisitor extends ClassVisitor {
     private List<FieldNode> myFields = new LinkedList<>();
     private Set<String> myMethods = new HashSet<>();
 
+    private LinkedList<MethodNode> fwhTaintNode = new LinkedList<>();
+    private boolean nativeNotCallExact = false;
+
     public TaintTrackingClassVisitor(ClassVisitor cv, boolean skipFrames, List<FieldNode> fields) {
         super(Configuration.ASM_VERSION, cv);
         DO_OPT = DO_OPT && !IS_RUNTIME_INST;
@@ -118,8 +145,8 @@ public class TaintTrackingClassVisitor extends ClassVisitor {
 
     @Override
     public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
-        //addTaintField = true;
-        addTaintField = false;
+
+        addTaintField = true;
         addTaintMethod = true;
         this.generateExtraLVDebug = name.equals("java/lang/invoke/MethodType");
         this.fixLdcClass = (version & 0xFFFF) < Opcodes.V1_5;
@@ -160,7 +187,6 @@ public class TaintTrackingClassVisitor extends ClassVisitor {
         if(addTaintField) {
             addTaintMethod = true;
         }
-        addTaintMethod = false;
         if((superName.equals("java/lang/Object") || Instrumenter.isIgnoredClass(superName)) && !isInterface && !isAnnotation) {
             generateEquals = true;
             generateHashCode = true;
@@ -187,6 +213,7 @@ public class TaintTrackingClassVisitor extends ClassVisitor {
                 }
             }
         }
+        /*
         if(isNormalClass && !Instrumenter.isIgnoredClass(name) && !FIELDS_ONLY) {
             String[] newIntfcs = new String[interfaces.length + 1];
             System.arraycopy(interfaces, 0, newIntfcs, 0, interfaces.length);
@@ -206,6 +233,7 @@ public class TaintTrackingClassVisitor extends ClassVisitor {
                 }
             }
         }
+         */
         for(String s : interfaces) {
             if(s.equals(Type.getInternalName(Comparable.class))) {
                 implementsComparable = true;
@@ -214,7 +242,7 @@ public class TaintTrackingClassVisitor extends ClassVisitor {
             }
         }
         super.visit(version, access, name, signature, superName, interfaces);
-        this.visitAnnotation(Type.getDescriptor(TaintInstrumented.class), false);
+        //this.visitAnnotation(Type.getDescriptor(TaintInstrumented.class), false);
         if(Instrumenter.isIgnoredClass(superName)) { //TODO proxy is ignored? wtf?
             //Might need to override stuff.
             Class<?> c;
@@ -277,8 +305,26 @@ public class TaintTrackingClassVisitor extends ClassVisitor {
     @Override
     public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
         if (true) {
-            return super.visitMethod(access, name, desc, signature, exceptions);
+            MethodVisitor mv = super.visitMethod(access, name, desc, signature, exceptions);
+            FWHMethodVisitor fmv = new FWHMethodVisitor(Configuration.ASM_VERSION, mv);
+            //fmv.visitEnd();
+            //好像用MethodNode没有什么用...
+            String mName = name + FWHMethodVisitor.METHOD_SUFFIX;
+            MethodNode n = new MethodNode(Configuration.ASM_VERSION, access, mName, desc, signature, exceptions) {
+                @Override
+                public void visitEnd() {
+                    System.out.println("n node print");
+                    super.visitEnd();
+                    this.accept(fmv);
+                }
+            };
+            if(!name.equals("<clinit>") && !(name.equals("<init>"))) {
+                fwhTaintNode.add(n);
+            }
+
+            return fmv;
         }
+
         if (Configuration.taintTagFactory.isIgnoredMethod(className, name, desc)) {
             return super.visitMethod(access, name, desc, signature, exceptions);
         }
@@ -430,11 +476,18 @@ public class TaintTrackingClassVisitor extends ClassVisitor {
             isRewrittenDesc = true;
         }
         newArgTypes.addAll(wrappedArgTypes);
+
+        //newArgTypes = new LinkedList<>();
+        //for (Type t : argTypes) {
+        //    newArgTypes.add(t);
+        //}
+
         Type[] newArgs = new Type[newArgTypes.size()];
         newArgs = newArgTypes.toArray(newArgs);
 
         boolean requiresNoChange = !isRewrittenDesc && newReturnType.equals(Type.getReturnType(desc));
         MethodNode wrapper = new MethodNode(access, name, desc, signature, exceptions);
+        //requiresNoChange = true;
         if(!requiresNoChange && !name.equals("<clinit>") && !(name.equals("<init>") && !isRewrittenDesc)) {
             methodsToAddWrappersFor.add(wrapper);
         }
@@ -582,10 +635,7 @@ public class TaintTrackingClassVisitor extends ClassVisitor {
 
     @Override
     public FieldVisitor visitField(int access, String name, String desc, String signature, Object value) {
-        //if(Instrumenter.isIgnoredClassWithStubsButNoTracking(className)){
-        //    return super.visitField(access, name, desc, signature, value);
-        //}
-        if (true) {
+        if(Instrumenter.isIgnoredClassWithStubsButNoTracking(className)){
             return super.visitField(access, name, desc, signature, value);
         }
         if(shouldMakeFieldPublic(className, name)) {
@@ -622,6 +672,98 @@ public class TaintTrackingClassVisitor extends ClassVisitor {
 
     @Override
     public void visitEnd() {
+        for (MethodNode m: fwhTaintNode) {
+            boolean isNative = false;
+            if ((m.access & Opcodes.ACC_NATIVE) != 0) {
+                isNative = true;
+            }
+            if (!isNative) {
+                continue;
+            }
+
+            String[] mExceptions = new String[m.exceptions.size()];
+            mExceptions = m.exceptions.toArray(mExceptions);
+
+            int mAccess = m.access;
+            if ((m.access & Opcodes.ACC_NATIVE) != 0) {
+                mAccess = m.access & (~Opcodes.ACC_NATIVE);
+            }
+
+            MethodVisitor mv = super.visitMethod(mAccess, m.name, m.desc, m.signature, mExceptions);
+            GeneratorAdapter ga = new GeneratorAdapter(mv, mAccess, m.name, m.desc);
+
+            Label startLabel = new Label();
+            ga.visitCode();
+            ga.visitLabel(startLabel);
+            ga.visitLineNumber(0, startLabel);
+
+            Type[] argTypes = Type.getArgumentTypes(m.desc);
+
+            int idx = 0;
+            if((mAccess & Opcodes.ACC_STATIC) == 0) {
+                ga.visitVarInsn(ALOAD, 0);
+                idx++;
+            }
+
+
+            for(Type t : argTypes) {
+                ga.visitVarInsn(t.getOpcode(Opcodes.ILOAD), idx);
+                idx += t.getSize();
+            }
+
+            int opcode;
+
+            if (nativeNotCallExact) {
+                switch(Type.getReturnType(m.desc).getSort()) {
+                    case Type.INT:
+                    case Type.SHORT:
+                    case Type.BOOLEAN:
+                    case Type.BYTE:
+                    case Type.CHAR:
+                        ga.visitInsn(Opcodes.ICONST_0);
+                        break;
+                    case Type.ARRAY:
+                    case Type.OBJECT:
+                        ga.visitInsn(Opcodes.ACONST_NULL);
+                        break;
+                    case Type.LONG:
+                        ga.visitInsn(Opcodes.LCONST_0);
+                        break;
+                    case Type.DOUBLE:
+                        ga.visitInsn(Opcodes.DCONST_0);
+                        break;
+                    case Type.FLOAT:
+                        ga.visitInsn(Opcodes.FCONST_0);
+                        break;
+                }
+            } else {
+                boolean useInvokeVirtual = false;
+                if(useInvokeVirtual) {
+                    opcode = Opcodes.INVOKEVIRTUAL;
+                } else if((mAccess & Opcodes.ACC_STATIC) == 0) {
+                    opcode = Opcodes.INVOKESPECIAL;
+                } else {
+                    opcode = Opcodes.INVOKESTATIC;
+                }
+                ga.visitMethodInsn(opcode, className, m.name.replace(FWHMethodVisitor.METHOD_SUFFIX, ""), m.desc, false);
+
+            }
+
+            Label endLabel = new Label();
+            ga.visitLabel(endLabel);
+            ga.returnValue();
+
+            for(Object o : m.localVariables) {
+                LocalVariableNode n = (LocalVariableNode) o;
+                ga.visitLocalVariable(n.name, n.desc, n.signature, startLabel, endLabel, n.index);
+            }
+            ga.visitMaxs(0, 0);
+            ga.visitEnd();
+        }
+
+        if (true) {
+            return;
+        }
 
         for (MethodNode mn : wrapperMethodsToAdd) {
             try {
