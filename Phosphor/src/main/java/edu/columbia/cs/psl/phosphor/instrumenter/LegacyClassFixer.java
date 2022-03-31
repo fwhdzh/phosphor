@@ -18,6 +18,7 @@ public class LegacyClassFixer {
     private static ClassReader approximateFrames(ClassReader cr) {
         // Compute approximate frames
         ClassWriter cw = new HackyClassWriter(cr, ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+        //ClassWriter cw = new HackyClassWriter(cr, 0);
         // Remove JSR instructions and inline subroutines
         cr.accept(new JsrInliningClassVisitor(cw), 0);
         return (Configuration.READ_AND_SAVE_BCI ? new OffsetPreservingClassReader(cw.toByteArray()) :
@@ -26,6 +27,7 @@ public class LegacyClassFixer {
 
     private static ClassReader correctFrames(ClassReader cr) {
         ClassWriter cw = new HackyClassWriter(cr, ClassWriter.COMPUTE_MAXS);
+        //ClassWriter cw = new HackyClassWriter(cr, 0);
         // Add CHECKCASTs to accommodate for incorrect frames
         cr.accept(new FrameCorrectingClassVisitor(cw), ClassReader.EXPAND_FRAMES);
         return (Configuration.READ_AND_SAVE_BCI ? new OffsetPreservingClassReader(cw.toByteArray()) :

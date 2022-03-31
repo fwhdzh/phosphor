@@ -63,6 +63,7 @@ public class TaintLoadCoercer extends MethodVisitor implements Opcodes {
         final String className = cr.getClassName();
         PrintWriter pw = new PrintWriter("z.txt");
         TraceClassVisitor tcv = new TraceClassVisitor(null, new PhosphorTextifier(), pw);
+        //ClassWriter cw1 = new ClassWriter(0) {
         ClassWriter cw1 = new ClassWriter(ClassWriter.COMPUTE_FRAMES) {
             @Override
             protected String getCommonSuperClass(String arg0, String arg1) {

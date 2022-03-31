@@ -677,9 +677,15 @@ public class TaintTrackingClassVisitor extends ClassVisitor {
             if ((m.access & Opcodes.ACC_NATIVE) != 0) {
                 isNative = true;
             }
-            if (!isNative) {
+            if (!isNative || Instrumenter.isIgnoredClass(className)) {
                 continue;
             }
+
+            /*
+            if (true) {
+                continue;
+            }
+            */
 
             String[] mExceptions = new String[m.exceptions.size()];
             mExceptions = m.exceptions.toArray(mExceptions);
@@ -762,6 +768,7 @@ public class TaintTrackingClassVisitor extends ClassVisitor {
         }
 
         if (true) {
+            super.visitEnd();
             return;
         }
 

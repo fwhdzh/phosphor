@@ -36,6 +36,7 @@ public class SourceSinkTransformer extends PhosphorBaseTransformer {
         try {
             ClassReader cr = new ClassReader(classfileBuffer);
             ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+            //ClassWriter cw = new ClassWriter(0);
             ClassVisitor cv = cw;
             if(PreMain.DEBUG || TaintUtils.VERIFY_CLASS_GENERATION) {
                 cv = new CheckClassAdapter(cw, false);

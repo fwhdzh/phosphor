@@ -200,6 +200,7 @@ public class PreMain {
             try {
                 try {
                     ClassWriter cw = new HackyClassWriter(null, ClassWriter.COMPUTE_MAXS);
+                    //ClassWriter cw = new HackyClassWriter(null, 0);
                     ClassVisitor _cv = new ClassVisitor(Opcodes.ASM7, cw) {
                         @Override
                         public MethodVisitor visitMethod(int access, String name, String descriptor, String signature,
