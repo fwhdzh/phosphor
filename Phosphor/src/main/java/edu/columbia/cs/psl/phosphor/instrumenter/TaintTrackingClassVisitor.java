@@ -311,12 +311,14 @@ public class TaintTrackingClassVisitor extends ClassVisitor {
             //好像用MethodNode没有什么用...
             String mName = name + FWHMethodVisitor.METHOD_SUFFIX;
             MethodNode n = new MethodNode(Configuration.ASM_VERSION, access, mName, desc, signature, exceptions) {
+                /*
                 @Override
                 public void visitEnd() {
                     System.out.println("n node print");
                     super.visitEnd();
                     this.accept(fmv);
                 }
+                */
             };
             if(!name.equals("<clinit>") && !(name.equals("<init>"))) {
                 fwhTaintNode.add(n);
